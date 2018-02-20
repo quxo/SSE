@@ -3,14 +3,23 @@
 (require net/head)
 (provide start-sse-tcp-port make-sse)
 (provide (struct-out sse))
-(provide send-event)
+(provide send-new-event)
+
+
+;; (provide (contract-out
+;; 	  [send-event (-> (or/c sse? thread?) message?  void?)]))
+
+
 
 
 (struct sse (sse-thread  [connection-threads #:mutable] messages-hash ))
 
+(struct message (event data retry)) 
 
 ;; messages hash will store continuations containing the messages
-;; The hash table has an entry last-message-id, which returns 
+  ;; The hash table has an entry last-message-id, which returns
+  
+
 
 
 (define (make-sse)
@@ -20,11 +29,11 @@
 	       (let loop ()
 		 (match (thread-receive)
 		   [(? string? message) ;; if it is a message
-		     ;;; Get rid of finished threads		     
+;;; Get rid of finished threads		     
 		    (set-sse-connection-threads!
 		     self-sse
 		     (filter thread-running? (sse-connection-threads self-sse ) ))
-		     ;;; Send the message to all threads
+;;; Send the message to all threads
 		    (map (lambda (x)
 			   (thread-send x message)) (sse-connection-threads self-sse )  )]
 		   [(? thread? t)		     
@@ -41,31 +50,25 @@
   (hash-set! (sse-messages-hash self-sse)
 	     'last-message-id 0)
   
-  self-sse
-  )
+  self-sse)
 
 
 
-(define (send-event a-sse		    
-		    #:data [data empty]
-		    #:event [event empty]
-		    #:id [id #f]
-		    #:retry [retry empty])
+(define (send-event to a-message [id #f])
+  ;;  to can be a sse in which case the event is sent to all the
+  ;;  instances, or, it can be a specific thread in which case the
+  ;;  message is only send to that case.
+  (define dest-thread
+    (if (sse? to) (sse-sse-thread to) to))
+    
+  (when id
+    (format "id: ~a\n" id))
   
-  (thread-send (sse-sse-thread a-sse)
-	       
+  (define event (message-event a-message) )
+  (define data  (message-data a-message) )
+  (define retry  (message-retry a-message) )
+  (thread-send dest-thread	       
 	       (string-append
-		
-		(if (not  id)
-		    (begin
-		      (let ([ next-id  (add1 (hash-ref (sse-messages-hash a-sse) 'last-message-id))])			
-			(hash-set! (sse-messages-hash a-sse)  'last-message-id next-id )
-			(let/cc k
-				(hash-set! (sse-messages-hash a-sse) next-id k))
-			(format "id: ~a\n" next-id)))
-		    "")		
-		
-
 		(if (not (null? event))
 		    (format "event: ~a\n" event )
 		    ""
@@ -77,10 +80,68 @@
 			    (map (lambda (x)
 				   (format "data: ~a\n" x))		      
 				 (string-split data "\n"))) 
-		     "\n")
-		    "\n"
-		    )
-		)))
+		     "\n") "")
+
+		(if (not (null? retry))
+		    (format "retry: ~a\n" retry )
+		    "") 
+		
+		"\n") ))
+
+(define (send-new-event a-sse
+			#:data [data empty]
+			#:event [event empty]
+			#:id [id #f]
+			#:retry [retry empty])
+
+  (define a-message (message event data retry))
+
+  (if id      
+    (let ([ next-id  (add1 (hash-ref (sse-messages-hash a-sse) 'last-message-id))])			
+      (hash-set! (sse-messages-hash a-sse)  'last-message-id next-id )	  
+      (hash-set! (sse-messages-hash a-sse) next-id a-message )
+      (send-event a-sse a-message next-id))
+    (send-event a-sse a-message)
+    ))
+
+
+
+
+;; (define (send-event a-sse		    
+;; 		    #:data [data empty]
+;; 		    #:event [event empty]
+;; 		    #:id [id #f]
+;; 		    #:retry [retry empty])
+  
+;;   (thread-send (sse-sse-thread a-sse)
+	       
+;; 	       (string-append
+		
+;; 		(if  id
+;; 		     (begin
+;; 		       (let ([ next-id  (add1 (hash-ref (sse-messages-hash a-sse) 'last-message-id))])			
+;; 			 (hash-set! (sse-messages-hash a-sse)  'last-message-id next-id )
+;; 			 (let/cc k
+;; 				 (hash-set! (sse-messages-hash a-sse) next-id k))
+;; 			 (format "id: ~a\n" next-id)))
+;; 		     "")		
+		
+
+;; 		(if (not (null? event))
+;; 		    (format "event: ~a\n" event )
+;; 		    ""
+;; 		    )
+
+;; 		(if (not (null? data))
+;; 		    (string-append
+;; 		     (apply string-append
+;; 			    (map (lambda (x)
+;; 				   (format "data: ~a\n" x))		      
+;; 				 (string-split data "\n"))) 
+;; 		     "\n")
+;; 		    "\n")
+		
+;; 		)))
 
 
 (module+ test
@@ -184,12 +245,16 @@
 
     ;; The following is the last id received by the client
     (define last-received-event-id
-      (extract-field "Last-Event-ID" current-request ))
+      (or  (extract-field "Last-Event-ID" current-request ) 0))
 
     (define last-event-id
-      (hash-ref (sse-messages-hash a-sse) 'last-event-id))
-    
-    
+      (hash-ref (sse-messages-hash a-sse) 'last-message-id))
+
+    (when (and last-received-event-id (> last-event-id last-received-event-id))
+      (for ([i (in-range (add1 last-received-event-id) (add1 last-event-id) )])
+	(send-event (current-thread)
+		    (hash-ref (sse-messages-hash a-sse) i) )))
+            
     
     (let loop ()
       (display (format "~a" (thread-receive)) out)
