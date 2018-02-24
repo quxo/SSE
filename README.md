@@ -1,2 +1,2 @@
-# SSE
-Server send events for racket
+# Server Sent Events Library for Racket
+

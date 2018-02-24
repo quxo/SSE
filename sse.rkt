@@ -6,6 +6,7 @@
 (provide send-new-event)
 
 
+
 ;; (provide (contract-out
 ;; 	  [send-event (-> (or/c sse? thread?) message?  void?)]))
 
@@ -16,9 +17,6 @@
 
 (struct message (event data retry)) 
 
-;; messages hash will store continuations containing the messages
-  ;; The hash table has an entry last-message-id, which returns
-  
 
 
 
@@ -106,42 +104,6 @@
 
 
 
-
-;; (define (send-event a-sse		    
-;; 		    #:data [data empty]
-;; 		    #:event [event empty]
-;; 		    #:id [id #f]
-;; 		    #:retry [retry empty])
-  
-;;   (thread-send (sse-sse-thread a-sse)
-	       
-;; 	       (string-append
-		
-;; 		(if  id
-;; 		     (begin
-;; 		       (let ([ next-id  (add1 (hash-ref (sse-messages-hash a-sse) 'last-message-id))])			
-;; 			 (hash-set! (sse-messages-hash a-sse)  'last-message-id next-id )
-;; 			 (let/cc k
-;; 				 (hash-set! (sse-messages-hash a-sse) next-id k))
-;; 			 (format "id: ~a\n" next-id)))
-;; 		     "")		
-		
-
-;; 		(if (not (null? event))
-;; 		    (format "event: ~a\n" event )
-;; 		    ""
-;; 		    )
-
-;; 		(if (not (null? data))
-;; 		    (string-append
-;; 		     (apply string-append
-;; 			    (map (lambda (x)
-;; 				   (format "data: ~a\n" x))		      
-;; 				 (string-split data "\n"))) 
-;; 		     "\n")
-;; 		    "\n")
-		
-;; 		)))
 
 
 (module+ test
