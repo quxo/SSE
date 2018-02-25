@@ -11,13 +11,9 @@
 ;; 	  [send-event (-> (or/c sse? thread?) message?  void?)]))
 
 
-
-
 (struct sse (sse-thread  [connection-threads #:mutable] messages-hash ))
 
 (struct message (event data retry)) 
-
-
 
 
 (define (make-sse)
@@ -148,10 +144,10 @@
   )
 
 
-(define (start-sse-tcp-port port-no a-sse)    
+(define (start-sse-tcp-port port-no a-sse [max-allow-wait 4] [reuse? #f] [hostname #f])    
   (define main-custodian (make-custodian))
   (parameterize ([current-custodian main-custodian])
-    (define listener (tcp-listen port-no))
+    (define listener (tcp-listen port-no max-allow-wait reuse? hostname))
     (define (loop)	
       (accept-and-handle listener a-sse)	
       (loop))      
@@ -188,13 +184,6 @@
 
 (define (handle in out a-sse)
   
-  ;; (define current-request
-  ;;   (let loop ([accum ""]
-  ;; 	       [cur-line (read-line in 'any)])
-  ;;     (if (or (equal? cur-line "\r") (equal? cur-line ""))
-  ;; 	  accum
-  ;; 	  (loop (string-append accum cur-line) (read-line in) ))))
-
   (define current-request (read-header in))
    
 
@@ -207,10 +196,14 @@
 
     ;; The following is the last id received by the client
     (define last-received-event-id
-      (or  (extract-field "Last-Event-ID" current-request ) 0))
-
+      (let ([val (or  (extract-field "Last-Event-ID" current-request ) 0)])
+	(if (string? val) (string->number val) val)))
+    
+        
     (define last-event-id
       (hash-ref (sse-messages-hash a-sse) 'last-message-id))
+
+
 
     (when (and last-received-event-id (> last-event-id last-received-event-id))
       (for ([i (in-range (add1 last-received-event-id) (add1 last-event-id) )])
@@ -224,6 +217,3 @@
       (loop))
     
     ))
-
-
-
