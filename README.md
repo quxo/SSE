@@ -1,3 +1,5 @@
+# **This repo has moved to [https://gitlab.com/oquijano/sse](https://gitlab.com/oquijano/sse)**
+
 # Server Sent Events Library for Racket
 ----
 
